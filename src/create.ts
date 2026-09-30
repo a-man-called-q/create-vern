@@ -1,5 +1,5 @@
-import { existsSync, readdirSync } from "node:fs";
-import { basename, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmdirSync, rmSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { type LoginOptions, setupLogin } from "./login";
 import type { Io } from "./prompt";
 import {
@@ -29,7 +29,6 @@ export interface CreateOptions {
 	/** Tests point these at local fixtures. */
 	templateUrl?: string;
 	loginUrl?: string;
-	checkDocker?: boolean;
 }
 
 export function slugify(text: string): string {
@@ -94,14 +93,6 @@ async function resolveIdentity(
 	return { name: name.trim(), slug };
 }
 
-function requireDocker(): void {
-	if (capture("docker", ["volume", "ls"]).status !== 0) {
-		throw new UserError(
-			"Docker is not running. The rename inspects Docker volumes so it cannot overwrite local auth data; start Docker and retry.",
-		);
-	}
-}
-
 function ensureBun(cwd: string, io: Io): string {
 	const found = findBun();
 	if (found) return found;
@@ -133,7 +124,64 @@ function initRepository(cwd: string, message: string, io: Io): void {
 	commit(cwd, message);
 }
 
-/** Copy the template, give it its own identity and history, and install it. */
+/**
+ * Copy the template into a staging folder next to `target`, rename it there,
+ * and move it into place with a single commit. Returns the Bun that ran the
+ * rename. A failure leaves nothing behind.
+ * The staging folder sits beside the target so the final move stays on one
+ * filesystem.
+ */
+function buildProject(
+	target: string,
+	identity: { name: string; slug: string },
+	templateUrl: string,
+	ref: ReturnType<typeof resolveRef>,
+	io: Io,
+): string {
+	mkdirSync(dirname(target), { recursive: true });
+	const stage = mkdtempSync(join(dirname(target), ".create-vern-"));
+	try {
+		io.log(`Copying Vern (${ref.label}) into ${target}`);
+		const sha = fetchTemplate(templateUrl, ref, stage);
+
+		// The template's rename script works on a Git checkout (clean tree, recorded
+		// baseline), so the copy gets a throwaway repository for the rename only.
+		const bun = ensureBun(stage, io);
+		initRepository(stage, "chore: stage the template", { ...io, warn: () => {} });
+		io.log(`Renaming Vern to ${identity.name} (${identity.slug})`);
+		const renamed = stream(
+			bun,
+			[
+				"scripts/rename-project.ts",
+				"--name",
+				identity.name,
+				"--slug",
+				identity.slug,
+				"--base",
+				sha,
+				"--apply",
+			],
+			{ cwd: stage },
+		);
+		if (renamed !== 0) {
+			throw new UserError("The rename failed, so no project was created.");
+		}
+
+		// The project starts here: one commit that is already renamed. The updater
+		// fetches Vern itself, so the staging history is not needed.
+		rmSync(join(stage, ".git"), { recursive: true, force: true });
+		initRepository(stage, `chore: initial commit from Vern ${sha.slice(0, 7)}`, io);
+
+		if (existsSync(target)) rmdirSync(target);
+		renameSync(stage, target);
+		return bun;
+	} catch (error) {
+		rmSync(stage, { recursive: true, force: true });
+		throw error;
+	}
+}
+
+/** Create the project already renamed, with its own history, and install it. */
 export async function createProject(options: CreateOptions, io: Io): Promise<void> {
 	if (!commandExists("git")) throw new UserError("Git is required.");
 	const target = await resolveTarget(options, io);
@@ -146,29 +194,10 @@ export async function createProject(options: CreateOptions, io: Io): Promise<voi
 					false,
 				)
 			: false);
-	if (options.checkDocker !== false) requireDocker();
-
 	const templateUrl =
 		options.templateUrl ?? process.env.CREATE_VERN_TEMPLATE_URL ?? DEFAULT_TEMPLATE_URL;
 	const ref = resolveRef(templateUrl, options.ref);
-	io.log(`Copying Vern (${ref.label}) into ${target}`);
-	const sha = fetchTemplate(templateUrl, ref, target);
-
-	const bun = ensureBun(target, io);
-	initRepository(target, `chore: initial commit from Vern ${sha.slice(0, 7)}`, io);
-
-	io.log(`Renaming Vern to ${name} (${slug})`);
-	const renamed = stream(
-		bun,
-		["scripts/rename-project.ts", "--name", name, "--slug", slug, "--base", sha, "--apply"],
-		{ cwd: target },
-	);
-	if (renamed !== 0) {
-		throw new UserError(
-			`The rename failed; the project is left in ${target} with the untouched template in its first commit.`,
-		);
-	}
-	commit(target, `chore: rename Vern to ${name}`);
+	const bun = buildProject(target, { name, slug }, templateUrl, ref, io);
 
 	if (options.install) {
 		if (commandExists("proto")) {

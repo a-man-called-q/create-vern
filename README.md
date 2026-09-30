@@ -10,9 +10,10 @@ bunx create-vern my-app        # or: npx create-vern my-app, pnpm dlx create-ver
 
 It asks for a project name and slug (taken from the folder name by default), then:
 
-1. Copies the latest Vern release into `my-app/`, without Vern's history.
-2. Renames Vern to your name and slug.
-3. Starts a new Git repository with two commits: the untouched template, then the rename.
+1. Copies the latest Vern release into a staging folder, without Vern's history.
+2. Renames Vern to your name and slug there.
+3. Moves the result to `my-app/` as a new Git repository with one commit, so the
+   project starts out already named. If any step fails, nothing is left behind.
 4. Installs the toolchain (`proto install`) and dependencies (`bun install`).
 
 Then follow the printed steps: generate an app, run `bun run setup`, and start
@@ -21,9 +22,9 @@ Then follow the printed steps: generate an app, run `bun run setup`, and start
 ## Requirements
 
 - **Git.**
-- **Docker, running.** The rename inspects Docker volumes so it cannot overwrite
-  local auth data. If a Compose project from another Vern checkout is running, stop
-  it first (`moon run auth-server:down` in that checkout).
+- **Docker, later.** Creating the project does not touch Docker, even when other
+  Vern checkouts have containers or volumes on the machine. `bun run setup` and the
+  login image (`--with-login`) need it running.
 - **[proto](https://moonrepo.dev/docs/proto/install)** for the toolchain pinned in
   the template (Bun, Moon, Rust). When Bun is missing, create-vern installs the
   pinned one with proto.

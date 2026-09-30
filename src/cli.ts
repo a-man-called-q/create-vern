@@ -31,7 +31,8 @@ Create options:
   -h, --help        Show this help
   -v, --version     Show the version
 
-Requires git and Docker (running). Bun is installed with proto when missing.
+Requires git. Bun is installed with proto when missing. Docker is needed later, by
+\`bun run setup\` and by --with-login (to build the image), not to create the project.
 `;
 
 async function main(argv: string[]): Promise<number> {

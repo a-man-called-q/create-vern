@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
-import { delimiter, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { delimiter, dirname, join } from "node:path";
 import { type CreateOptions, createProject } from "../src/create";
 import { setupLogin } from "../src/login";
 import { UserError } from "../src/system";
@@ -36,7 +36,6 @@ function options(dir: string, extra: Partial<CreateOptions> = {}): CreateOptions
 		buildLogin: false,
 		install: false,
 		yes: true,
-		checkDocker: false,
 		...extra,
 	};
 }
@@ -56,11 +55,12 @@ describe("createProject", () => {
 		expect(config.upstream.apply).toBe(true);
 		expect(readFileSync(join(target, "README.md"), "utf8")).toBe("# Acme Platform\n");
 
-		// Its own history: the template's commits are not carried over.
+		// Its own history: one commit, already renamed. Neither the template's commits
+		// nor the staging commit made for the rename are carried over.
 		const subjects = git(target, "log", "--format=%s").split("\n");
-		expect(subjects).toHaveLength(2);
-		expect(subjects[0]).toBe("chore: rename Vern to Acme Platform");
-		expect(subjects[1]).toStartWith("chore: initial commit from Vern ");
+		expect(subjects).toHaveLength(1);
+		expect(subjects[0]).toStartWith("chore: initial commit from Vern ");
+		expect(git(target, "show", "--stat", "--format=", "HEAD")).toContain(".vern/config.json");
 		expect(git(target, "status", "--porcelain")).toBe("");
 		expect(git(target, "remote")).toBe("");
 		expect(git(target, "branch", "--show-current")).toBe("main");
@@ -146,10 +146,45 @@ describe("createProject", () => {
 		git(template.dir, "-c", "user.name=F", "-c", "user.email=f@example.com", "commit", "--quiet", "-m", "broken");
 		git(template.dir, "tag", "v1.0.0");
 		const target = join(tempDir(), "broken");
+		const parent = dirname(target);
 		await expect(
 			createProject(options(target, { templateUrl: template.url }), recordingIo()),
 		).rejects.toThrow(/rename failed/);
-		expect(git(target, "log", "--format=%s")).toStartWith("chore: initial commit");
+		// Nothing is left behind: no half-made project and no staging folder.
+		expect(existsSync(target)).toBe(false);
+		expect(readdirSync(parent)).toEqual([]);
+	});
+
+	test("leaves no staging folder next to a project that was created", async () => {
+		const template = makeTemplate();
+		const parent = tempDir();
+		await createProject(options(join(parent, "acme"), { templateUrl: template.url }), recordingIo());
+		expect(readdirSync(parent)).toEqual(["acme"]);
+	});
+
+	test("creates missing parent folders and fills an empty target folder", async () => {
+		const template = makeTemplate();
+		const nested = join(tempDir(), "deep", "er", "acme");
+		await createProject(options(nested, { templateUrl: template.url }), recordingIo());
+		expect(existsSync(join(nested, ".vern/config.json"))).toBe(true);
+
+		const empty = join(tempDir(), "empty");
+		mkdirSync(empty);
+		await createProject(options(empty, { templateUrl: template.url }), recordingIo());
+		expect(existsSync(join(empty, ".vern/config.json"))).toBe(true);
+	});
+
+	test("does not need Docker to create a project", async () => {
+		const template = makeTemplate();
+		// A Docker that is not running would fail every call; none must be made.
+		const docker = fakeDocker(1);
+		process.env.PATH = `${docker.bin}${delimiter}${saved.PATH ?? ""}`;
+		try {
+			await createProject(options(join(tempDir(), "acme"), { templateUrl: template.url }), recordingIo());
+			expect(existsSync(docker.log)).toBe(false);
+		} finally {
+			process.env.PATH = saved.PATH;
+		}
 	});
 });
 
