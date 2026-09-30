@@ -1,0 +1,38 @@
+{
+	"name": "create-vern",
+	"version": "0.1.0",
+	"description": "Create a Vern project: copy the template, rename it, install the toolchain, and update it later.",
+	"license": "MIT",
+	"type": "module",
+	"bin": {
+		"create-vern": "dist/cli.js"
+	},
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=20"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/a-man-called-q/create-vern.git"
+	},
+	"homepage": "https://github.com/a-man-called-q/create-vern#readme",
+	"keywords": [
+		"vern",
+		"zitadel",
+		"template",
+		"create",
+		"scaffold"
+	],
+	"scripts": {
+		"build": "bun build src/cli.ts --target=node --outfile=dist/cli.js",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"prepublishOnly": "bun run typecheck && bun test && bun run build"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.4.2",
+		"typescript": "^5.9.0"
+	}
+}
