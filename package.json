@@ -1,6 +1,6 @@
 {
 	"name": "create-vern",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Create a Vern project: copy the template, rename it, install the toolchain, and update it later.",
 	"license": "MIT",
 	"type": "module",
