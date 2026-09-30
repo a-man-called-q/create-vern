@@ -106,10 +106,10 @@ export function setupLogin(
 			`  docker build -f .vern/login.Dockerfile -t ${image} .   (in ${shown})`,
 			"  moon run auth-server:dev                                (in the project)",
 			"",
-			"To deploy your login, publish an image from your fork. Its publish workflow",
-			"(.github/workflows/publish.yml) is pinned to the Vern repository: change the",
-			"repository guard and the image name there, push, and set ZITADEL_LOGIN_IMAGE",
-			"to the published tag.",
+			"To deploy your login, publish an image from your fork: enable Actions on it,",
+			"run \"Publish Login image\" once, make the package public (or docker login",
+			"ghcr.io where the stack runs), and set ZITADEL_LOGIN_IMAGE to the published",
+			"tag. Details: the README of your fork.",
 		].join("\n"),
 	);
 }
