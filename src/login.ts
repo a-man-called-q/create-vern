@@ -1,13 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative } from "node:path";
 import type { Io } from "./prompt";
-import { capture, commandExists, git, stream, UserError } from "./system";
+import { capture, git, stream, UserError } from "./system";
 
 export const DEFAULT_LOGIN_URL = "https://github.com/a-man-called-q/vern-zitadel-login.git";
 
 export interface LoginOptions {
-	/** Fork the repository on GitHub with `gh` and point `origin` at the fork. */
-	fork: boolean;
 	/** Build the image and point the auth stack at it. */
 	build: boolean;
 	/** Where to clone; defaults to `<slug>-login` next to the project. */
@@ -36,18 +34,16 @@ function cloneLogin(url: string, dir: string, io: Io): void {
 	git(dirname(dir), ["clone", "--quiet", url, dir], "Cloning vern-zitadel-login");
 }
 
-function forkLogin(dir: string, io: Io): void {
-	if (!commandExists("gh") || capture("gh", ["auth", "status"]).status !== 0) {
-		io.warn(
-			`The GitHub CLI is missing or not signed in, so ${dir} still points at the Vern repository. Create your own repository and run \`git remote set-url origin <url>\` there.`,
-		);
-		return;
-	}
-	io.log("Forking vern-zitadel-login to your GitHub account");
-	if (stream("gh", ["repo", "fork", "--remote"], { cwd: dir }) !== 0) {
-		io.warn(
-			`Could not fork the repository (you cannot fork your own). ${dir} still points at the Vern repository.`,
-		);
+/**
+ * Stop the checkout from following Vern's repository, so it is the project's
+ * own from the start. The history and the `upstream/*` tags stay: the ZITADEL
+ * sync workflow merges new releases on top of them. A checkout whose `origin`
+ * already points somewhere else is left alone.
+ */
+function detachLogin(url: string, dir: string): void {
+	const origin = capture("git", ["remote", "get-url", "origin"], { cwd: dir });
+	if (origin.status === 0 && origin.stdout.trim() === url) {
+		git(dir, ["remote", "remove", "origin"], "Removing the Vern remote");
 	}
 }
 
@@ -80,8 +76,9 @@ export function setupLogin(
 ): void {
 	const dir = options.dir ?? join(dirname(projectRoot), `${slug}-login`);
 	const image = `${slug}-login:local`;
-	cloneLogin(options.url ?? DEFAULT_LOGIN_URL, dir, io);
-	if (options.fork) forkLogin(dir, io);
+	const url = options.url ?? DEFAULT_LOGIN_URL;
+	cloneLogin(url, dir, io);
+	detachLogin(url, dir);
 
 	const envDir = join(projectRoot, "apps", "auth-server");
 	if (options.build && buildImage(dir, image, io)) {
@@ -106,10 +103,14 @@ export function setupLogin(
 			`  docker build -f .vern/login.Dockerfile -t ${image} .   (in ${shown})`,
 			"  moon run auth-server:dev                                (in the project)",
 			"",
-			"To deploy your login, publish an image from your fork: enable Actions on it,",
-			"run \"Publish Login image\" once, make the package public (or docker login",
-			"ghcr.io where the stack runs), and set ZITADEL_LOGIN_IMAGE to the published",
-			"tag. Details: the README of your fork.",
+			`${shown} is yours: it keeps the Login App's history and has no remote. To deploy`,
+			"your login, push it to a repository of your own, with the tags the ZITADEL",
+			"sync merges from:",
+			"  git remote add origin <your repository>",
+			"  git push -u origin main --tags",
+			"Then run \"Publish Login image\" there once, make the package public (or docker",
+			"login ghcr.io where the stack runs), and set ZITADEL_LOGIN_IMAGE to the",
+			`published tag. Details: ${shown}/.github/README.md.`,
 		].join("\n"),
 	);
 }

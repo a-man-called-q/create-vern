@@ -21,7 +21,6 @@ export interface CreateOptions {
 	ref?: string;
 	/** `undefined` asks (or answers no without a terminal). */
 	login?: boolean;
-	fork: boolean;
 	buildLogin: boolean;
 	install: boolean;
 	/** Take the defaults instead of asking. */
@@ -190,7 +189,7 @@ export async function createProject(options: CreateOptions, io: Io): Promise<voi
 		options.login ??
 		(io.interactive && !options.yes
 			? await io.confirm(
-					"Customize the login page layout? (forks vern-zitadel-login next to the project; colors and text can be changed without it)",
+					"Customize the login page layout? (copies vern-zitadel-login next to the project; colors and text can be changed without it)",
 					false,
 				)
 			: false);
@@ -216,7 +215,6 @@ export async function createProject(options: CreateOptions, io: Io): Promise<voi
 
 	if (wantLogin) {
 		const login: LoginOptions = {
-			fork: options.fork,
 			build: options.buildLogin,
 			url: options.loginUrl,
 		};

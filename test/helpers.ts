@@ -84,6 +84,7 @@ export function makeLoginRepo(): { url: string; dir: string } {
 	write(dir, ".vern/UPSTREAM_VERSION", "v9.9.9\n");
 	write(dir, ".vern/login.Dockerfile", "FROM scratch\n");
 	commitAll(dir, "login");
+	git(dir, "tag", "upstream/v9.9.9");
 	return { url: pathToFileURL(dir).href, dir };
 }
 

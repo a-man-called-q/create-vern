@@ -21,9 +21,8 @@ Create options:
   --name <name>     Display name (default: from the directory)
   --slug <slug>     Package slug, lowercase kebab-case (default: from the name)
   --ref <ref>       Template tag, branch, or commit on main (default: latest release)
-  --with-login      Also fork vern-zitadel-login next to the project
+  --with-login      Also copy vern-zitadel-login next to the project
   --no-login        Skip the login question
-  --no-fork         With the login: clone it but do not fork it on GitHub
   --no-build        With the login: do not build its image
   --no-install      Skip \`proto install\` and \`bun install\`
   -y, --yes         Take defaults instead of asking
@@ -45,7 +44,6 @@ async function main(argv: string[]): Promise<number> {
 			ref: { type: "string" },
 			"with-login": { type: "boolean" },
 			"no-login": { type: "boolean" },
-			"no-fork": { type: "boolean" },
 			"no-build": { type: "boolean" },
 			"no-install": { type: "boolean" },
 			apply: { type: "boolean" },
@@ -82,7 +80,7 @@ async function main(argv: string[]): Promise<number> {
 	if (first === "login") {
 		const root = requireProjectRoot(process.cwd());
 		const { slug } = readProjectConfig(root);
-		setupLogin(root, slug, { fork: !values["no-fork"], build: !values["no-build"] }, io);
+		setupLogin(root, slug, { build: !values["no-build"] }, io);
 		return 0;
 	}
 
@@ -94,7 +92,6 @@ async function main(argv: string[]): Promise<number> {
 			slug: values.slug,
 			ref: values.ref,
 			login: values["with-login"] ? true : values["no-login"] ? false : undefined,
-			fork: !values["no-fork"],
 			buildLogin: !values["no-build"],
 			install: !values["no-install"],
 			yes: Boolean(values.yes),

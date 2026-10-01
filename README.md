@@ -39,9 +39,8 @@ create-vern [directory] [options]
 --name <name>     Display name (default: from the directory)
 --slug <slug>     Package slug, lowercase kebab-case (default: from the name)
 --ref <ref>       Template tag, branch, or commit on main (default: latest release)
---with-login      Also fork vern-zitadel-login next to the project
+--with-login      Also copy vern-zitadel-login next to the project
 --no-login        Skip the login question
---no-fork         With the login: clone it but do not fork it on GitHub
 --no-build        With the login: do not build its image
 --no-install      Skip `proto install` and `bun install`
 -y, --yes         Take defaults instead of asking
@@ -76,11 +75,19 @@ that when create-vern asks, pass `--with-login`, or run this later:
 npx create-vern login
 ```
 
-It clones the Login App to `<slug>-login/` next to the project, forks it on GitHub
-when the GitHub CLI is signed in (`--no-fork` to skip), builds
+It copies the Login App to `<slug>-login/` next to the project, builds
 `<slug>-login:local`, and points `apps/auth-server/.env` at that image and its
 ZITADEL version. The project keeps working with the published image if any of
 those steps fails.
+
+The copy is yours: it keeps the Login App's history, which the ZITADEL sync
+workflow merges new releases onto, and has no remote. To deploy it, push it to a
+repository of your own, tags included:
+
+```sh
+git remote add origin <your repository>
+git push -u origin main --tags
+```
 
 ## Develop
 

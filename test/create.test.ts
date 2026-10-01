@@ -32,7 +32,6 @@ afterAll(() => {
 function options(dir: string, extra: Partial<CreateOptions> = {}): CreateOptions {
 	return {
 		dir,
-		fork: false,
 		buildLogin: false,
 		install: false,
 		yes: true,
@@ -222,7 +221,7 @@ describe("createProject with the login", () => {
 			const project = tempDir();
 			write(project, "apps/auth-server/.env.example", "ZITADEL_LOGIN_IMAGE=published\n");
 			const io = recordingIo();
-			setupLogin(project, "acme", { fork: false, build: true, dir: join(tempDir(), "l"), url: login.url }, io);
+			setupLogin(project, "acme", { build: true, dir: join(tempDir(), "l"), url: login.url }, io);
 			expect(existsSync(join(project, "apps/auth-server/.env"))).toBe(false);
 			expect(io.warnings.join("\n")).toContain("build failed");
 		} finally {
@@ -234,16 +233,37 @@ describe("createProject with the login", () => {
 		const login = makeLoginRepo();
 		const dir = join(tempDir(), "existing");
 		const io = recordingIo();
-		setupLogin(tempDir(), "acme", { fork: false, build: false, dir, url: login.url }, io);
-		setupLogin(tempDir(), "acme", { fork: false, build: false, dir, url: login.url }, io);
+		setupLogin(tempDir(), "acme", { build: false, dir, url: login.url }, io);
+		setupLogin(tempDir(), "acme", { build: false, dir, url: login.url }, io);
 		expect(io.lines.join("\n")).toContain("Using the existing");
+	});
+
+	test("leaves the checkout without a remote but with its history and tags", () => {
+		const login = makeLoginRepo();
+		const dir = join(tempDir(), "own");
+		setupLogin(tempDir(), "acme", { build: false, dir, url: login.url }, recordingIo());
+		expect(git(dir, "remote")).toBe("");
+		expect(git(dir, "rev-parse", "HEAD")).toBe(git(login.dir, "rev-parse", "HEAD"));
+		expect(git(dir, "tag", "-l")).toBe("upstream/v9.9.9");
+	});
+
+	test("detaches an existing checkout from Vern, and keeps a remote of your own", () => {
+		const login = makeLoginRepo();
+		const dir = join(tempDir(), "existing");
+		git(dirname(dir), "clone", "--quiet", login.url, dir);
+		setupLogin(tempDir(), "acme", { build: false, dir, url: login.url }, recordingIo());
+		expect(git(dir, "remote")).toBe("");
+
+		git(dir, "remote", "add", "origin", "https://example.com/acme/acme-login.git");
+		setupLogin(tempDir(), "acme", { build: false, dir, url: login.url }, recordingIo());
+		expect(git(dir, "remote", "get-url", "origin")).toBe("https://example.com/acme/acme-login.git");
 	});
 
 	test("refuses to overwrite a folder that is not a login checkout", () => {
 		const dir = tempDir();
 		write(dir, "notes.txt", "mine");
 		expect(() =>
-			setupLogin(tempDir(), "acme", { fork: false, build: false, dir, url: "file:///nope" }, recordingIo()),
+			setupLogin(tempDir(), "acme", { build: false, dir, url: "file:///nope" }, recordingIo()),
 		).toThrow(/not a vern-zitadel-login checkout/);
 	});
 });
