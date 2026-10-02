@@ -1,6 +1,8 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { capture, git, UserError } from "./system";
+import { UserError } from "../system/errors";
+import { git } from "../system/git";
+import { capture } from "../system/process";
 
 export const DEFAULT_TEMPLATE_URL = "https://github.com/a-man-called-q/vern.git";
 
@@ -9,20 +11,22 @@ export type TemplateRef =
 	| { kind: "named"; value: string; label: string }
 	| { kind: "sha"; value: string; label: string };
 
+type ReleaseParts = [number, number, number];
+
 /** Compare `vX.Y.Z` tags numerically; anything else is not a release. */
-function releaseParts(tag: string): [number, number, number] | undefined {
+function releaseParts(tag: string): ReleaseParts | undefined {
 	const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(tag);
 	if (!match) return undefined;
 	return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
-function compareParts(a: number[], b: number[]): number {
-	return (a[0] ?? 0) - (b[0] ?? 0) || (a[1] ?? 0) - (b[1] ?? 0) || (a[2] ?? 0) - (b[2] ?? 0);
+function compareParts(a: ReleaseParts, b: ReleaseParts): number {
+	return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 }
 
 /** The highest stable release tag in `git ls-remote --tags --refs` output. */
 export function pickLatestTag(lsRemote: string): string | undefined {
-	let best: { tag: string; parts: number[] } | undefined;
+	let best: { tag: string; parts: ReleaseParts } | undefined;
 	for (const line of lsRemote.split(/\r?\n/)) {
 		const ref = line.split("\t")[1];
 		if (!ref?.startsWith("refs/tags/")) continue;
@@ -33,17 +37,16 @@ export function pickLatestTag(lsRemote: string): string | undefined {
 	return best?.tag;
 }
 
-/**
- * Pick what to copy: the ref the user asked for, else the latest release tag,
- * else the default branch (until the template publishes releases).
- */
-export function resolveRef(url: string, explicit?: string): TemplateRef {
-	if (explicit) {
-		if (/^[0-9a-f]{7,40}$/i.test(explicit)) {
-			return { kind: "sha", value: explicit, label: explicit.slice(0, 7) };
-		}
-		return { kind: "named", value: explicit, label: explicit };
+/** A ref the user asked for: a commit when it looks like one, else a tag or branch. */
+function explicitRef(ref: string): TemplateRef {
+	if (/^[0-9a-f]{7,40}$/i.test(ref)) {
+		return { kind: "sha", value: ref, label: ref.slice(0, 7) };
 	}
+	return { kind: "named", value: ref, label: ref };
+}
+
+/** The latest release tag, else the default branch (until the template publishes releases). */
+function latestRelease(url: string): TemplateRef {
 	const listing = capture("git", ["ls-remote", "--tags", "--refs", url]);
 	if (listing.status !== 0) {
 		throw new UserError(
@@ -51,9 +54,21 @@ export function resolveRef(url: string, explicit?: string): TemplateRef {
 		);
 	}
 	const tag = pickLatestTag(listing.stdout);
-	return tag
-		? { kind: "named", value: tag, label: tag }
-		: { kind: "head", label: "the default branch" };
+	if (!tag) return { kind: "head", label: "the default branch" };
+	return { kind: "named", value: tag, label: tag };
+}
+
+/** Pick what to copy: the ref the user asked for, else the latest release. */
+export function resolveRef(url: string, explicit?: string): TemplateRef {
+	if (explicit) return explicitRef(explicit);
+	return latestRelease(url);
+}
+
+/** A commit is checked out of the full history; a tag or branch needs only its tip. */
+function cloneArgs(ref: TemplateRef): string[] {
+	if (ref.kind === "sha") return ["clone", "--quiet"];
+	if (ref.kind === "named") return ["clone", "--quiet", "--depth", "1", "--branch", ref.value];
+	return ["clone", "--quiet", "--depth", "1"];
 }
 
 /**
@@ -63,13 +78,9 @@ export function resolveRef(url: string, explicit?: string): TemplateRef {
  */
 export function fetchTemplate(url: string, ref: TemplateRef, dest: string): string {
 	mkdirSync(dirname(dest), { recursive: true });
+	git(dirname(dest), [...cloneArgs(ref), url, dest], "Copying the template");
 	if (ref.kind === "sha") {
-		git(dirname(dest), ["clone", "--quiet", url, dest], "Copying the template");
 		git(dest, ["checkout", "--quiet", ref.value], `Checking out ${ref.value}`);
-	} else {
-		const args = ["clone", "--quiet", "--depth", "1"];
-		if (ref.kind === "named") args.push("--branch", ref.value);
-		git(dirname(dest), [...args, url, dest], "Copying the template");
 	}
 	const sha = git(dest, ["rev-parse", "HEAD"], "Reading the template commit");
 	rmSync(join(dest, ".git"), { recursive: true, force: true });
