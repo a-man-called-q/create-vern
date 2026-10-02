@@ -1,13 +1,25 @@
 import { createInterface } from "node:readline/promises";
 
-export interface Io {
-	/** False when stdin or stdout is not a terminal; prompts then use defaults. */
-	interactive: boolean;
+export interface Logger {
 	log(message: string): void;
 	warn(message: string): void;
+}
+
+export interface Prompter {
+	/** False when stdin or stdout is not a terminal; prompts then use defaults. */
+	interactive: boolean;
 	ask(question: string, fallback: string): Promise<string>;
 	confirm(question: string, fallback: boolean): Promise<boolean>;
 }
+
+export interface Io extends Logger, Prompter {}
+
+/** Asks nothing and takes every default, as `--yes` does. */
+export const acceptDefaults: Prompter = {
+	interactive: false,
+	ask: async (_question, fallback) => fallback,
+	confirm: async (_question, fallback) => fallback,
+};
 
 export function createIo(): Io {
 	const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);

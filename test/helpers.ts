@@ -1,9 +1,11 @@
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { afterAll, beforeAll } from "bun:test";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Io } from "../src/prompt";
-import { capture } from "../src/system";
+import type { CreateOptions } from "../src/create/create-project";
+import type { Io } from "../src/system/io";
+import { capture } from "../src/system/process";
 
 export function tempDir(prefix = "create-vern-"): string {
 	return mkdtempSync(join(tmpdir(), prefix));
@@ -19,6 +21,33 @@ export function git(cwd: string, ...args: string[]): string {
 	const result = capture("git", args, { cwd });
 	if (result.status !== 0) throw new Error(`git ${args.join(" ")}: ${result.stderr}`);
 	return result.stdout.trim();
+}
+
+/** Keep the machine's Git identity and config out of the tests in the calling file. */
+export function isolateGit(): void {
+	const saved = { ...process.env };
+
+	beforeAll(() => {
+		process.env.HOME = tempDir("home-");
+		process.env.GIT_CONFIG_GLOBAL = "/dev/null";
+		process.env.GIT_CONFIG_NOSYSTEM = "1";
+	});
+
+	afterAll(() => {
+		for (const key of Object.keys(process.env)) delete process.env[key];
+		Object.assign(process.env, saved);
+	});
+}
+
+/** Run `fn` with `bin` first on PATH, so a fake command there shadows the real one. */
+export async function withPath<T>(bin: string, fn: () => T | Promise<T>): Promise<T> {
+	const saved = process.env.PATH;
+	process.env.PATH = `${bin}${delimiter}${saved ?? ""}`;
+	try {
+		return await fn();
+	} finally {
+		process.env.PATH = saved;
+	}
 }
 
 /** Commit everything in `dir` as a fixture author and return the commit. */
@@ -114,4 +143,21 @@ export function recordingIo(overrides: Partial<Io> = {}): Io & { lines: string[]
 		lines,
 		warnings,
 	};
+}
+
+/** Options that create `dir` without asking, installing, or building anything. */
+export function createOptions(dir: string, extra: Partial<CreateOptions> = {}): CreateOptions {
+	return {
+		cwd: process.cwd(),
+		dir,
+		buildLogin: false,
+		install: false,
+		yes: true,
+		...extra,
+	};
+}
+
+/** The `.vern/config.json` the rename script wrote in `project`. */
+export function readConfig(project: string) {
+	return JSON.parse(readFileSync(join(project, ".vern/config.json"), "utf8"));
 }

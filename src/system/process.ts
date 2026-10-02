@@ -3,9 +3,6 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 
-/** An error whose message is meant for the person running the CLI. */
-export class UserError extends Error {}
-
 export interface Captured {
 	status: number;
 	stdout: string;
@@ -14,7 +11,6 @@ export interface Captured {
 
 interface RunOptions {
 	cwd?: string;
-	env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -22,7 +18,7 @@ interface RunOptions {
  * shell that has not been restarted since the install does not have them on
  * PATH yet.
  */
-export function toolEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function toolEnv(): NodeJS.ProcessEnv {
 	const home = homedir();
 	const extra = [
 		join(home, ".proto", "shims"),
@@ -30,8 +26,8 @@ export function toolEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEn
 		join(home, ".bun", "bin"),
 	].filter((dir) => existsSync(dir));
 	return {
-		...base,
-		PATH: [base.PATH ?? "", ...extra].filter(Boolean).join(delimiter),
+		...process.env,
+		PATH: [process.env.PATH ?? "", ...extra].filter(Boolean).join(delimiter),
 	};
 }
 
@@ -43,7 +39,7 @@ export function capture(
 ): Captured {
 	const result = spawnSync(command, args, {
 		cwd: options.cwd,
-		env: options.env ?? toolEnv(),
+		env: toolEnv(),
 		encoding: "utf8",
 		maxBuffer: 32 * 1024 * 1024,
 	});
@@ -65,7 +61,7 @@ export function stream(
 ): number {
 	const result = spawnSync(command, args, {
 		cwd: options.cwd,
-		env: options.env ?? toolEnv(),
+		env: toolEnv(),
 		stdio: "inherit",
 	});
 	if (result.error) return 127;
@@ -74,35 +70,4 @@ export function stream(
 
 export function commandExists(command: string): boolean {
 	return capture(command, ["--version"]).status === 0;
-}
-
-/** The Bun that runs the project's scripts; the one running us when it is Bun. */
-export function findBun(): string | undefined {
-	if (process.versions.bun) return process.execPath;
-	return commandExists("bun") ? "bun" : undefined;
-}
-
-export function git(cwd: string, args: string[], what: string): string {
-	const result = capture("git", args, { cwd });
-	if (result.status !== 0) {
-		const detail = result.stderr.trim() || `git ${args[0]} exited with ${result.status}`;
-		throw new UserError(`${what} failed: ${detail}`);
-	}
-	return result.stdout.trim();
-}
-
-/**
- * `-c` flags that give commits an author when Git has none configured, so a
- * fresh machine can still create the project.
- */
-export function gitIdentityArgs(cwd?: string): string[] {
-	const configured = (key: string) =>
-		capture("git", ["config", key], { cwd }).stdout.trim() !== "";
-	if (configured("user.name") && configured("user.email")) return [];
-	return [
-		"-c",
-		"user.name=create-vern",
-		"-c",
-		"user.email=create-vern@users.noreply.github.com",
-	];
 }

@@ -98,6 +98,22 @@ bun run typecheck
 bun run build      # dist/cli.js, a Node-compatible bundle with no dependencies
 ```
 
+The source is one folder per command, on top of two shared ones:
+
+```
+src/
+  cli.ts      entry point: hands argv, the working directory, and the environment to cli/
+  cli/        flags, help text, and the table of commands
+  create/     create a project: questions, name rules, template, staging and rename
+  login/      add the Login App: checkout, image, auth stack environment
+  update/     run the project's own update script
+  project/    find and read .vern/config.json
+  system/     processes, Git, toolchain, terminal; knows nothing about Vern
+```
+
+Imports go down that list only: a command may use `project/` and `system/`, and
+`system/` uses nothing above it. `test/` has the same folders.
+
 `CREATE_VERN_TEMPLATE_URL` points the installer at another copy of the template;
 the tests use it with a local fixture. The rename records the upstream that
 `scripts/rename-project.ts` names, so use it for testing only.
