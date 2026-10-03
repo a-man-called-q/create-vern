@@ -5,8 +5,17 @@ import type { Logger } from "../system/io";
 import { capture, stream } from "../system/process";
 import { LOGIN_DOCKERFILE, UPSTREAM_VERSION_FILE } from "./layout";
 
-/** Where the project keeps the auth stack's environment, relative to its root. */
-const AUTH_SERVER = join("apps", "auth-server");
+/**
+ * Where a project keeps the auth stack, relative to its root: today's place
+ * first, then where older releases of Vern had it.
+ */
+const AUTH_SERVER_DIRS = [join("deploy", "dev", "auth-server"), join("infra", "auth-server"), join("apps", "auth-server")];
+
+/** The auth stack's folder: the first that is there, else today's place. */
+function authServerDir(projectRoot: string): string {
+	const found = AUTH_SERVER_DIRS.find((dir) => existsSync(join(projectRoot, dir)));
+	return join(projectRoot, found ?? (AUTH_SERVER_DIRS[0] as string));
+}
 
 /** Build the Login App in `dir` as `image`. False, with a warning, when it could not be built. */
 export function buildImage(dir: string, image: string, logger: Logger): boolean {
@@ -37,7 +46,8 @@ function readFirstExisting(paths: string[]): string {
  * example when there is none yet, and returns the file it wrote.
  */
 export function pointAuthStackAt(projectRoot: string, loginDir: string, image: string): string {
-	const envFile = join(projectRoot, AUTH_SERVER, ".env");
+	const dir = authServerDir(projectRoot);
+	const envFile = join(dir, ".env");
 	let env = readFirstExisting([envFile, `${envFile}.example`]);
 	const versionFile = join(loginDir, UPSTREAM_VERSION_FILE);
 	if (existsSync(versionFile)) {

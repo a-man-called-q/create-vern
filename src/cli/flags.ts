@@ -17,6 +17,13 @@ Create options:
   --name <name>     Display name (default: from the directory)
   --slug <slug>     Package slug, lowercase kebab-case (default: from the name)
   --ref <ref>       Template tag, branch, or commit on main (default: latest release)
+  --prod <how>      How production runs: compose (Docker Compose) or kubernetes
+  --staging <how>   How staging runs: none, compose, or kubernetes
+  --local <how>     How a rehearsal of production on this machine runs:
+                    none, compose, or kubernetes
+                    The project keeps only the files of what these use. Without
+                    the three (and with --yes) it keeps both ways; choose later
+                    with \`bun run project:stack\` in the project.
   --with-login      Also copy vern-zitadel-login next to the project
   --no-login        Skip the login question
   --no-build        With the login: do not build its image
@@ -39,6 +46,9 @@ export function parseFlags(argv: string[]) {
 			name: { type: "string" },
 			slug: { type: "string" },
 			ref: { type: "string" },
+			prod: { type: "string" },
+			staging: { type: "string" },
+			local: { type: "string" },
 			"with-login": { type: "boolean" },
 			"no-login": { type: "boolean" },
 			"no-build": { type: "boolean" },

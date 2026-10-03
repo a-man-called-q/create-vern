@@ -76,7 +76,7 @@ export function makeTemplate(): { url: string; dir: string; sha: string } {
 	git(dir, "init", "--quiet", "-b", "main");
 	write(dir, ".gitignore", "node_modules/\n**/.env\n");
 	write(dir, "README.md", "# Vern\n");
-	write(dir, "apps/auth-server/.env.example", "ZITADEL_VERSION=v1.0.0\nZITADEL_LOGIN_IMAGE=example/login:v1.0.0\n");
+	write(dir, "deploy/dev/auth-server/.env.example", "ZITADEL_VERSION=v1.0.0\nZITADEL_LOGIN_IMAGE=example/login:v1.0.0\n");
 	write(
 		dir,
 		"scripts/rename-project.ts",
@@ -99,6 +99,24 @@ writeFileSync("README.md", readFileSync("README.md", "utf8").replace("Vern", val
 	);
 	const first = commitAll(dir, "first");
 	git(dir, "tag", "v0.2.0");
+	// A later release can choose how the environments run, as Vern's script does:
+	// it records the choice and deletes what no environment uses.
+	write(dir, "deploy/compose/docker-compose.yml", "name: vern\n");
+	write(dir, "deploy/base/kustomization.yaml", "resources: []\n");
+	write(
+		dir,
+		"scripts/stack-project.ts",
+		`import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+const args = process.argv.slice(2);
+const value = (flag: string) => args[args.indexOf(flag) + 1];
+const environments = { local: value("--local"), staging: value("--staging"), prod: value("--prod") };
+const uses = (how: string) => Object.values(environments).includes(how);
+if (!uses("compose")) rmSync("deploy/compose", { recursive: true });
+if (!uses("kubernetes")) rmSync("deploy/base", { recursive: true });
+const config = JSON.parse(readFileSync(".vern/config.json", "utf8"));
+writeFileSync(".vern/config.json", JSON.stringify({ ...config, environments, hadGit: existsSync(".git") }));
+`,
+	);
 	write(dir, "CHANGELOG.md", "second\n");
 	commitAll(dir, "second");
 	git(dir, "tag", "v0.10.0");

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type LoginOptions, setupLogin } from "../../src/login/setup-login";
 import {
@@ -26,11 +26,29 @@ describe("setupLogin", () => {
 		const docker = fakeDocker(1);
 		await withPath(docker.bin, () => {
 			const project = tempDir();
-			write(project, "apps/auth-server/.env.example", "ZITADEL_LOGIN_IMAGE=published\n");
+			write(project, "deploy/dev/auth-server/.env.example", "ZITADEL_LOGIN_IMAGE=published\n");
 			const io = recordingIo();
 			setupLogin(project, "acme", loginOptions(join(tempDir(), "l"), login.url, { build: true }), io);
-			expect(existsSync(join(project, "apps/auth-server/.env"))).toBe(false);
+			expect(existsSync(join(project, "deploy/dev/auth-server/.env"))).toBe(false);
 			expect(io.warnings.join("\n")).toContain("build failed");
+		});
+	});
+
+	test("points the auth stack at the image, wherever the project keeps the stack", async () => {
+		const login = makeLoginRepo();
+		const docker = fakeDocker();
+		await withPath(docker.bin, () => {
+			// Today's layout, and the two that older releases of Vern had.
+			for (const authServer of ["deploy/dev/auth-server", "infra/auth-server", "apps/auth-server"]) {
+				const project = tempDir();
+				write(project, `${authServer}/.env.example`, "ZITADEL_VERSION=v1.0.0\nZITADEL_LOGIN_IMAGE=published\n");
+				const io = recordingIo();
+				setupLogin(project, "acme", loginOptions(join(tempDir(), "l"), login.url, { build: true }), io);
+				expect(readFileSync(join(project, authServer, ".env"), "utf8")).toBe(
+					"ZITADEL_VERSION=v9.9.9\nZITADEL_LOGIN_IMAGE=acme-login:local\n",
+				);
+				expect(io.lines.join("\n")).toContain(`Set ZITADEL_LOGIN_IMAGE=acme-login:local in ${authServer}/.env`);
+			}
 		});
 	});
 

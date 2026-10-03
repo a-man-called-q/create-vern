@@ -99,7 +99,7 @@ describe("createProject", () => {
 		expect(io.lines.join("\n")).toContain("Created Acme in acme. Next:");
 	});
 
-	test("asks for the name, the slug, and the login when run in a terminal", async () => {
+	test("asks for the name, the slug, the environments, and the login when run in a terminal", async () => {
 		const template = makeTemplate();
 		const login = makeLoginRepo();
 		const target = join(tempDir(), "asked");
@@ -121,8 +121,15 @@ describe("createProject", () => {
 		);
 		expect(asked[0]).toBe("Project name");
 		expect(asked[1]).toBe("Package slug");
-		expect(asked[2]).toStartWith("Customize the login page layout?");
+		expect(asked.slice(2, 5).map((question) => question.split("?")[0])).toEqual([
+			"How does production run",
+			"How does staging run",
+			"How does a rehearsal of production on your machine run",
+		]);
+		expect(asked[5]).toStartWith("Customize the login page layout?");
 		expect(readConfig(target).project).toEqual({ name: "Asked Co", slug: "asked-co" });
+		// Enter takes the defaults: one server with Docker for production, and nothing else.
+		expect(readConfig(target).environments).toEqual({ local: "none", staging: "none", prod: "compose" });
 		expect(existsSync(join(target, "..", "asked-co-login"))).toBe(false);
 	});
 
@@ -207,11 +214,124 @@ describe("createProject with the login", () => {
 			expect(existsSync(join(parent, "acme-login", ".vern/login.Dockerfile"))).toBe(true);
 			const built = readFileSync(docker.log, "utf8");
 			expect(built).toContain("build -f .vern/login.Dockerfile -t acme-login:local .");
-			const env = readFileSync(join(target, "apps/auth-server/.env"), "utf8");
+			const env = readFileSync(join(target, "deploy/dev/auth-server/.env"), "utf8");
 			expect(env).toBe("ZITADEL_VERSION=v9.9.9\nZITADEL_LOGIN_IMAGE=acme-login:local\n");
 			// .env is not tracked, so the project's history stays clean.
 			expect(git(target, "status", "--porcelain")).toBe("");
 		});
+	});
+
+	test("keeps both ways to run an environment when nothing is chosen", async () => {
+		const template = makeTemplate();
+		const target = join(tempDir(), "acme");
+		await createProject(createOptions(target, { templateUrl: template.url }), recordingIo());
+		expect(readConfig(target).environments).toBeUndefined();
+		expect(existsSync(join(target, "deploy/compose/docker-compose.yml"))).toBe(true);
+		expect(existsSync(join(target, "deploy/base/kustomization.yaml"))).toBe(true);
+	});
+
+	test("keeps only what the chosen environments use, in the first commit", async () => {
+		const template = makeTemplate();
+		const target = join(tempDir(), "acme");
+		const io = recordingIo();
+		await createProject(
+			createOptions(target, { templateUrl: template.url, environments: { prod: "kubernetes", staging: "none", local: "kubernetes" } }),
+			io,
+		);
+		const config = readConfig(target);
+		expect(config.environments).toEqual({ local: "kubernetes", staging: "none", prod: "kubernetes" });
+		// The template's script ran after the rename, on the copy without a repository.
+		expect(config.project.slug).toBe("acme");
+		expect(config.hadGit).toBe(false);
+		expect(existsSync(join(target, "deploy/compose"))).toBe(false);
+		expect(existsSync(join(target, "deploy/base/kustomization.yaml"))).toBe(true);
+		expect(git(target, "log", "--format=%s").split("\n")).toHaveLength(1);
+		expect(git(target, "status", "--porcelain")).toBe("");
+		expect(git(target, "ls-files", "deploy")).not.toContain("deploy/compose");
+		expect(io.lines.join("\n")).toContain("Keeping what the environments use (prod: kubernetes, staging: none, local: kubernetes)");
+	});
+
+	test("asks how each environment runs, production first", async () => {
+		const template = makeTemplate();
+		const target = join(tempDir(), "acme");
+		const asked: string[] = [];
+		const answers = ["", "", "everywhere", "kubernetes", "", "compose"];
+		const io = recordingIo({
+			interactive: true,
+			ask: async (question, fallback) => {
+				asked.push(question);
+				return answers.shift() || fallback;
+			},
+		});
+		await createProject(createOptions(target, { templateUrl: template.url, yes: false, login: false }), io);
+		expect(asked.map((question) => question.split("?")[0])).toEqual([
+			"Project name",
+			"Package slug",
+			// An answer that is not a choice is asked again.
+			"How does production run",
+			"How does production run",
+			"How does staging run",
+			"How does a rehearsal of production on your machine run",
+		]);
+		expect(readConfig(target).environments).toEqual({ local: "compose", staging: "none", prod: "kubernetes" });
+	});
+
+	test("puts the choice off when the answer is later", async () => {
+		const template = makeTemplate();
+		const target = join(tempDir(), "acme");
+		const asked: string[] = [];
+		const io = recordingIo({
+			interactive: true,
+			ask: async (question, fallback) => {
+				asked.push(question);
+				return question.startsWith("How does production") ? "later" : fallback;
+			},
+		});
+		await createProject(createOptions(target, { templateUrl: template.url, yes: false, login: false }), io);
+		expect(asked).toHaveLength(3);
+		expect(readConfig(target).environments).toBeUndefined();
+		expect(existsSync(join(target, "deploy/base/kustomization.yaml"))).toBe(true);
+	});
+
+	test("refuses a choice that is not one, or only part of one, before downloading anything", async () => {
+		const options = (environments: Record<string, string>) =>
+			createOptions(join(tempDir(), "acme"), { templateUrl: "file:///does/not/exist", environments });
+		await expect(createProject(options({ prod: "none", staging: "none", local: "none" }), recordingIo())).rejects.toThrow(
+			"--prod takes compose, or kubernetes.",
+		);
+		await expect(createProject(options({ prod: "compose" }), recordingIo())).rejects.toThrow(
+			"Pass --prod, --staging, and --local together, or none of them to keep both ways.",
+		);
+	});
+
+	test("creates nothing when the template cannot apply the choice", async () => {
+		const template = makeTemplate();
+		const parent = tempDir();
+		const target = join(parent, "acme");
+		// A script that fails, as Vern's does on a real error.
+		const fixture = join(template.dir, "scripts/stack-project.ts");
+		write(template.dir, "scripts/stack-project.ts", `process.exit(1);\n${readFileSync(fixture, "utf8")}`);
+		git(template.dir, "add", "-A");
+		git(template.dir, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "--quiet", "-m", "broken");
+		await expect(
+			createProject(
+				createOptions(target, { templateUrl: template.url, ref: "main", environments: { prod: "compose", staging: "none", local: "none" } }),
+				recordingIo(),
+			),
+		).rejects.toThrow("Choosing the environments failed, so no project was created.");
+		expect(readdirSync(parent)).toEqual([]);
+	});
+
+	test("says so when the release of Vern is from before it could choose", async () => {
+		const template = makeTemplate();
+		const target = join(tempDir(), "acme");
+		const io = recordingIo();
+		await createProject(
+			createOptions(target, { templateUrl: template.url, ref: "v0.2.0", environments: { prod: "compose", staging: "none", local: "none" } }),
+			io,
+		);
+		expect(io.warnings.join("\n")).toContain("cannot choose how the environments run yet");
+		expect(readConfig(target).environments).toBeUndefined();
 	});
 
 	test("finishes the project when the login cannot be set up", async () => {
