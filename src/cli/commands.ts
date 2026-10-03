@@ -48,6 +48,7 @@ async function runCreate(flags: Flags, args: string[], context: CliContext): Pro
 			name: flags.name,
 			slug: flags.slug,
 			ref: flags.ref,
+			environments: { prod: flags.prod, staging: flags.staging, local: flags.local },
 			login: loginChoice(flags),
 			buildLogin: !flags["no-build"],
 			install: !flags["no-install"],

@@ -22,7 +22,7 @@ function nextSteps(shown: string, image: string): string {
 		"",
 		`Edit the login in ${shown}/apps/login/src, then rebuild and restart:`,
 		`  docker build -f ${LOGIN_DOCKERFILE} -t ${image} .   (in ${shown})`,
-		"  moon run auth-server:dev                                (in the project)",
+		"  moon run auth-server:up                                 (in the project)",
 		"",
 		`${shown} is yours: it keeps the Login App's history and has no remote. To deploy`,
 		"your login, push it to a repository of your own, with the tags the ZITADEL",

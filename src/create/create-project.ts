@@ -4,6 +4,7 @@ import { errorMessage, UserError } from "../system/errors";
 import type { Io, Logger } from "../system/io";
 import { commandExists } from "../system/process";
 import { installToolchain } from "../system/toolchain";
+import { type Environment, resolveEnvironments } from "./environments";
 import {
 	choosePrompter,
 	resolveIdentity,
@@ -21,6 +22,8 @@ export interface CreateOptions {
 	slug?: string;
 	/** Tag, branch, or commit of the template; defaults to the latest release. */
 	ref?: string;
+	/** How each environment runs (none, compose, kubernetes); one left out is asked about. */
+	environments?: Partial<Record<Environment, string>>;
 	/** `undefined` asks (or answers no without a terminal). */
 	login?: boolean;
 	buildLogin: boolean;
@@ -62,6 +65,7 @@ function nextSteps(name: string, shown: string, installed: boolean): string {
 		"  bun run setup                                        # starts ZITADEL and wires the app to it",
 		"  moon run :dev",
 		"",
+		"Choose how staging and production run (Docker Compose or Kubernetes), or change it, with: bun run project:stack",
 		"Update later with: npx create-vern update",
 	);
 	return lines.join("\n");
@@ -73,11 +77,12 @@ export async function createProject(options: CreateOptions, io: Io): Promise<voi
 	const prompter = choosePrompter(io, options.yes);
 	const target = await resolveTarget(options.dir, options.cwd, prompter);
 	const identity = await resolveIdentity(options, basename(target), prompter);
+	const environments = await resolveEnvironments(options.environments ?? {}, prompter);
 	const wantLogin = await resolveLoginChoice(options.login, prompter);
 	const templateUrl = options.templateUrl ?? DEFAULT_TEMPLATE_URL;
 	const ref = resolveRef(templateUrl, options.ref);
 
-	scaffoldProject({ target, identity, templateUrl, ref }, io);
+	scaffoldProject({ target, identity, templateUrl, ref, environments }, io);
 	if (options.install) installToolchain(target, io);
 	if (wantLogin) setupLoginOrWarn(target, identity.slug, options, io);
 	io.log(nextSteps(identity.name, relative(options.cwd, target) || ".", options.install));
