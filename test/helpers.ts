@@ -131,7 +131,7 @@ writeFileSync(".vern/config.json", JSON.stringify({ ...config, environments, had
  */
 export function addCliRelease(template: { dir: string }, tag = "v0.12.0"): string {
 	git(template.dir, "rm", "-r", "--quiet", "scripts");
-	write(template.dir, "packages/cli/package.json", '{"name":"@vern/cli","bin":{"vern":"src/bin.ts"}}\n');
+	write(template.dir, "packages/cli/package.json", '{"name":"@tsanyqudsi/vern","bin":{"vern":"src/bin.ts"}}\n');
 	write(
 		template.dir,
 		"packages/cli/src/bin.ts",

@@ -9,7 +9,7 @@ isolateGit();
 
 describe("updateProject", () => {
 	test("runs the newest CLI on npm, whatever the project has installed", () => {
-		expect(updateCommand()).toEqual(["x", "@vern/cli@latest", "project:update"]);
+		expect(updateCommand()).toEqual(["x", "@tsanyqudsi/vern@latest", "project:update"]);
 	});
 
 	test("runs the update from the project root, with the flags it was given", async () => {

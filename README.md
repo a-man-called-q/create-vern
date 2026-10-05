@@ -87,8 +87,8 @@ npx create-vern update --apply     # review branch: merge, upgrade dependencies,
 npx create-vern update --continue  # resume after resolving conflicts
 ```
 
-This runs the update of the newest [`@vern/cli`](https://www.npmjs.com/package/@vern/cli)
-on npm (`bunx @vern/cli@latest project:update`), not the version the project has
+This runs the update of the newest [`@tsanyqudsi/vern`](https://www.npmjs.com/package/@tsanyqudsi/vern)
+on npm (`bunx @tsanyqudsi/vern@latest project:update`), not the version the project has
 installed: the update that brings a change is the one that knows how to apply
 it. A project from before that package, which has the same code in `scripts/`,
 is moved to it by the same command. The baseline it merges from is the commit
@@ -137,7 +137,7 @@ src/
   cli/        flags, help text, and the table of commands
   create/     create a project: questions, name rules, template, staging and rename
   login/      add the Login App: checkout, image, auth stack environment
-  update/     run the update of the newest @vern/cli
+  update/     run the update of the newest @tsanyqudsi/vern
   project/    find and read .vern/config.json
   system/     processes, Git, toolchain, terminal; knows nothing about Vern
 ```
@@ -154,7 +154,7 @@ template's CLI names, so use it for testing only. `CREATE_VERN_CLI` makes
 To create a project, the installer runs the rename and the choice of
 environments from the release it copied (`packages/cli` there, `scripts/` in a
 release from before the CLI), so their logic always matches the template. The
-rename removes `packages/cli` from the project, which installs `@vern/cli` from
+rename removes `packages/cli` from the project, which installs `@tsanyqudsi/vern` from
 npm, so the installer runs both from a copy in the temporary folder.
 
 Windows is untested.

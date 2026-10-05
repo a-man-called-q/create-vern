@@ -12,7 +12,7 @@ import { findBun } from "../system/toolchain";
  * instead.
  */
 export function updateCommand(cli?: string): string[] {
-	return cli ? [cli, "project:update"] : ["x", "@vern/cli@latest", "project:update"];
+	return cli ? [cli, "project:update"] : ["x", "@tsanyqudsi/vern@latest", "project:update"];
 }
 
 /**
