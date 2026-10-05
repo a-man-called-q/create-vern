@@ -4,7 +4,7 @@ import { join } from "node:path";
 import pkg from "../../package.json" with { type: "json" };
 import { type CliContext, run } from "../../src/cli/commands";
 import type { Io } from "../../src/system/io";
-import { isolateGit, makeTemplate, readConfig, recordingIo, tempDir } from "../helpers";
+import { fakeCli, isolateGit, makeTemplate, readConfig, recordingIo, tempDir } from "../helpers";
 
 isolateGit();
 
@@ -69,19 +69,19 @@ describe("run", () => {
 		expect(asked).toHaveLength(1);
 	});
 
-	test("passes the update mode to the project's update script", async () => {
+	test("passes the update mode to the CLI's update", async () => {
 		const template = makeTemplate();
-		const cli = context({ env: { CREATE_VERN_TEMPLATE_URL: template.url } });
+		const cli = context({ env: { CREATE_VERN_TEMPLATE_URL: template.url, CREATE_VERN_CLI: fakeCli() } });
 		await run(["acme", "--no-install", "-y"], cli);
 		const project = { ...cli, cwd: join(cli.cwd, "acme") };
 		const ran = () => readFileSync(join(project.cwd, "update-ran.txt"), "utf8");
 
 		expect(await run(["update"], project)).toBe(0);
-		expect(ran()).toBe("");
+		expect(ran()).toBe("project:update");
 		expect(await run(["update", "--apply"], project)).toBe(0);
-		expect(ran()).toBe("--apply");
+		expect(ran()).toBe("project:update --apply");
 		expect(await run(["update", "--continue"], project)).toBe(0);
-		expect(ran()).toBe("--continue");
+		expect(ran()).toBe("project:update --continue");
 	});
 
 	test("needs a project for update and login", async () => {

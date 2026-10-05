@@ -124,6 +124,55 @@ writeFileSync(".vern/config.json", JSON.stringify({ ...config, environments, had
 	return { url: pathToFileURL(dir).href, dir, sha: first };
 }
 
+/**
+ * Adds a release to `template` that has its commands as a CLI in packages/cli,
+ * as Vern does: `scripts/` is gone, the rename removes the source (a project
+ * installs the package), and each command says where it ran from.
+ */
+export function addCliRelease(template: { dir: string }, tag = "v0.12.0"): string {
+	git(template.dir, "rm", "-r", "--quiet", "scripts");
+	write(template.dir, "packages/cli/package.json", '{"name":"@tsanyqudsi/vern","bin":{"vern":"src/bin.ts"}}\n');
+	write(
+		template.dir,
+		"packages/cli/src/bin.ts",
+		`import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+const [command, ...args] = process.argv.slice(2);
+const value = (flag: string) => args[args.indexOf(flag) + 1];
+const ranInside = import.meta.dir.startsWith(process.cwd());
+if (command === "project:rename") {
+	mkdirSync(".vern", { recursive: true });
+	writeFileSync(".vern/config.json", JSON.stringify({
+		schemaVersion: 1,
+		project: { name: value("--name"), slug: value("--slug") },
+		upstream: { lastSyncedSha: value("--base"), apply: args.includes("--apply") },
+		rename: { ranInside, hadGit: existsSync(".git") },
+	}));
+	writeFileSync("README.md", readFileSync("README.md", "utf8").replace("Vern", value("--name")));
+	rmSync("packages/cli", { recursive: true });
+} else if (command === "project:stack") {
+	const environments = { local: value("--local"), staging: value("--staging"), prod: value("--prod") };
+	const uses = (how: string) => Object.values(environments).includes(how);
+	if (!uses("compose")) rmSync("deploy/compose", { recursive: true });
+	if (!uses("kubernetes")) rmSync("deploy/base", { recursive: true });
+	const config = JSON.parse(readFileSync(".vern/config.json", "utf8"));
+	writeFileSync(".vern/config.json", JSON.stringify({ ...config, environments, stack: { ranInside, hadGit: existsSync(".git") } }));
+} else {
+	process.exit(2);
+}
+`,
+	);
+	const sha = commitAll(template.dir, "the commands become a CLI");
+	git(template.dir, "tag", tag);
+	return sha;
+}
+
+/** A stand-in for the CLI's entry: it writes what it was run with to update-ran.txt, in the folder it ran in. */
+export function fakeCli(): string {
+	const dir = tempDir("cli-");
+	write(dir, "bin.ts", 'import { writeFileSync } from "node:fs";\nwriteFileSync("update-ran.txt", process.argv.slice(2).join(" "));\n');
+	return join(dir, "bin.ts");
+}
+
 /** A stand-in for vern-zitadel-login. */
 export function makeLoginRepo(): { url: string; dir: string } {
 	const dir = tempDir("login-");

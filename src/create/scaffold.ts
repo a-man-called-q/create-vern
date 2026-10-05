@@ -8,9 +8,7 @@ import { ensureBun } from "../system/toolchain";
 import { applyEnvironments, type Environments } from "./environments";
 import type { ProjectIdentity } from "./identity";
 import { fetchTemplate, type TemplateRef } from "./template";
-
-/** The template's own script, relative to its root, which is where Bun runs it. */
-const RENAME_SCRIPT = "scripts/rename-project.ts";
+import { templateCommands } from "./template-cli";
 
 export interface ScaffoldRequest {
 	/** The folder the project ends up in; missing or empty. */
@@ -40,11 +38,11 @@ function withStage(target: string, build: (stage: string) => void): void {
 	}
 }
 
-/** Run the template's rename script, recording `sha` as the commit the copy came from. */
-function runRename(stage: string, bun: string, identity: ProjectIdentity, sha: string): void {
+/** Run the template's rename, recording `sha` as the commit the copy came from. */
+function runRename(stage: string, bun: string, rename: string[], identity: ProjectIdentity, sha: string): void {
 	const status = stream(
 		bun,
-		[RENAME_SCRIPT, "--name", identity.name, "--slug", identity.slug, "--base", sha, "--apply"],
+		[...rename, "--name", identity.name, "--slug", identity.slug, "--base", sha, "--apply"],
 		{ cwd: stage },
 	);
 	if (status !== 0) {
@@ -63,19 +61,25 @@ export function scaffoldProject(request: ScaffoldRequest, logger: Logger): void 
 		const sha = fetchTemplate(templateUrl, ref, stage);
 		const bun = ensureBun(stage, logger);
 
-		// The template's rename script works on a Git checkout (clean tree, recorded
-		// baseline), so the copy gets a throwaway repository for the rename only.
-		initRepository(stage);
-		const author = resolveCommitAuthor(stage);
-		commitAll(stage, "chore: stage the template", author);
-		logger.log(`Renaming Vern to ${identity.name} (${identity.slug})`);
-		runRename(stage, bun, identity, sha);
+		const commands = templateCommands(stage);
+		let author: ReturnType<typeof resolveCommitAuthor>;
+		try {
+			// The template's rename works on a Git checkout (clean tree, recorded
+			// baseline), so the copy gets a throwaway repository for the rename only.
+			initRepository(stage);
+			author = resolveCommitAuthor(stage);
+			commitAll(stage, "chore: stage the template", author);
+			logger.log(`Renaming Vern to ${identity.name} (${identity.slug})`);
+			runRename(stage, bun, commands.rename, identity, sha);
 
-		// The project starts here: one commit that is already renamed. The updater
-		// fetches Vern itself, so the staging history is not needed.
-		rmSync(join(stage, ".git"), { recursive: true, force: true });
-		// The first commit already holds only what the environments use.
-		if (environments) applyEnvironments(stage, bun, environments, logger);
+			// The project starts here: one commit that is already renamed. The updater
+			// fetches Vern itself, so the staging history is not needed.
+			rmSync(join(stage, ".git"), { recursive: true, force: true });
+			// The first commit already holds only what the environments use.
+			if (environments) applyEnvironments(stage, bun, commands.stack, environments, logger);
+		} finally {
+			commands.dispose();
+		}
 		initRepository(stage);
 		if (author.fallback) {
 			logger.warn("Git has no user.name/user.email; committing as create-vern.");

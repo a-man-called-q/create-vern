@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { createProject } from "../../src/create/create-project";
 import { UserError } from "../../src/system/errors";
 import {
+	addCliRelease,
 	createOptions,
 	fakeDocker,
 	git,
@@ -196,6 +197,69 @@ describe("createProject", () => {
 			await createProject(createOptions(join(tempDir(), "acme"), { templateUrl: template.url }), recordingIo());
 			expect(existsSync(docker.log)).toBe(false);
 		});
+	});
+});
+
+describe("createProject from a release with its commands in packages/cli", () => {
+	test("renames with the template's own CLI, which leaves the project", async () => {
+		const template = makeTemplate();
+		const sha = addCliRelease(template);
+		const target = join(tempDir(), "acme");
+		await createProject(createOptions(target, { templateUrl: template.url }), recordingIo());
+		const config = readConfig(target);
+		expect(config.project).toEqual({ name: "Acme", slug: "acme" });
+		expect(config.upstream).toEqual({ lastSyncedSha: sha, apply: true });
+		// It ran on the throwaway repository, from a copy outside the project.
+		expect(config.rename).toEqual({ ranInside: false, hadGit: true });
+		expect(existsSync(join(target, "packages/cli"))).toBe(false);
+		expect(existsSync(join(target, "scripts"))).toBe(false);
+		expect(readFileSync(join(target, "README.md"), "utf8")).toBe("# Acme\n");
+		expect(git(target, "rev-list", "--count", "HEAD")).toBe("1");
+		expect(git(target, "status", "--porcelain")).toBe("");
+	});
+
+	test("chooses the environments after the rename removed the source", async () => {
+		const template = makeTemplate();
+		addCliRelease(template);
+		const target = join(tempDir(), "acme");
+		await createProject(
+			createOptions(target, {
+				templateUrl: template.url,
+				environments: { prod: "kubernetes", staging: "none", local: "none" },
+			}),
+			recordingIo(),
+		);
+		const config = readConfig(target);
+		expect(config.environments).toEqual({ prod: "kubernetes", staging: "none", local: "none" });
+		expect(config.stack).toEqual({ ranInside: false, hadGit: false });
+		expect(existsSync(join(target, "deploy/compose"))).toBe(false);
+		expect(existsSync(join(target, "deploy/base/kustomization.yaml"))).toBe(true);
+		expect(git(target, "status", "--porcelain")).toBe("");
+	});
+
+	test("leaves no copy of the CLI behind, also when the rename fails", async () => {
+		const template = makeTemplate();
+		addCliRelease(template);
+		write(template.dir, "packages/cli/src/bin.ts", "process.exit(3);\n");
+		git(template.dir, "add", "-A");
+		git(template.dir, "-c", "user.name=F", "-c", "user.email=f@example.com", "commit", "--quiet", "-m", "broken");
+		git(template.dir, "tag", "v1.0.0");
+		// A temporary folder of its own, to see what the installer leaves in it.
+		const saved = process.env.TMPDIR;
+		const scratch = tempDir("scratch-");
+		process.env.TMPDIR = scratch;
+		try {
+			const target = join(tempDir(), "broken");
+			await expect(
+				createProject(createOptions(target, { templateUrl: template.url }), recordingIo()),
+			).rejects.toThrow(/rename failed/);
+			expect(existsSync(target)).toBe(false);
+			await createProject(createOptions(target, { templateUrl: template.url, ref: "v0.12.0" }), recordingIo());
+			expect(readdirSync(scratch).filter((name) => name.startsWith("create-vern-cli-"))).toEqual([]);
+		} finally {
+			if (saved === undefined) delete process.env.TMPDIR;
+			else process.env.TMPDIR = saved;
+		}
 	});
 });
 

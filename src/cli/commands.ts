@@ -62,7 +62,7 @@ async function runCreate(flags: Flags, args: string[], context: CliContext): Pro
 
 function runUpdate(flags: Flags, args: string[], context: CliContext): number {
 	rejectExtra(args);
-	return updateProject(updateFlags(flags), context.cwd);
+	return updateProject(updateFlags(flags), context.cwd, context.env.CREATE_VERN_CLI);
 }
 
 function runLogin(flags: Flags, _args: string[], context: CliContext): number {
