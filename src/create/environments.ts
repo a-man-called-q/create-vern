@@ -1,11 +1,6 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { UserError } from "../system/errors";
 import type { Logger, Prompter } from "../system/io";
 import { stream } from "../system/process";
-
-/** The template's own script, relative to its root, which keeps only what the environments use. */
-const STACK_SCRIPT = "scripts/stack-project.ts";
 
 /** The environments that run the whole product, in the order they are asked about. */
 export const ENVIRONMENTS = ["prod", "staging", "local"] as const;
@@ -85,12 +80,18 @@ export async function resolveEnvironments(
 }
 
 /**
- * Run the template's script that records the choice and removes what no
- * environment uses. False, with a warning, for a release of Vern from before
- * it had one: the project then keeps both ways.
+ * Run the template's command (`stack`) that records the choice and removes
+ * what no environment uses. False, with a warning, for a release of Vern from
+ * before it had one: the project then keeps both ways.
  */
-export function applyEnvironments(stage: string, bun: string, environments: Environments, logger: Logger): boolean {
-	if (!existsSync(join(stage, STACK_SCRIPT))) {
+export function applyEnvironments(
+	stage: string,
+	bun: string,
+	stack: string[] | undefined,
+	environments: Environments,
+	logger: Logger,
+): boolean {
+	if (!stack) {
 		logger.warn(
 			"This release of Vern cannot choose how the environments run yet, so the project keeps both ways. After an update, run `bun run project:stack` in it.",
 		);
@@ -98,7 +99,7 @@ export function applyEnvironments(stage: string, bun: string, environments: Envi
 	}
 	logger.log(`Keeping what the environments use (${ENVIRONMENTS.map((name) => `${name}: ${environments[name]}`).join(", ")})`);
 	const args = ENVIRONMENTS.flatMap((environment) => [`--${environment}`, environments[environment]]);
-	if (stream(bun, [STACK_SCRIPT, ...args], { cwd: stage }) !== 0) {
+	if (stream(bun, [...stack, ...args], { cwd: stage }) !== 0) {
 		throw new UserError("Choosing the environments failed, so no project was created.");
 	}
 	return true;

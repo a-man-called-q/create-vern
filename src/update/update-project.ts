@@ -1,30 +1,31 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { requireProjectRoot } from "../project/config";
 import { UserError } from "../system/errors";
 import { stream } from "../system/process";
 import { findBun } from "../system/toolchain";
 
-/** Relative to the project root, which is where Bun runs it. */
-const UPDATE_SCRIPT = "scripts/update-project.ts";
+/**
+ * What Bun runs for an update. Without `cli` it is the newest CLI on npm, not
+ * the one the project has installed: the update that brings a change is the
+ * one that knows how to apply it. It is also what moves a project from before
+ * the CLI, which has the same code in `scripts/`. `cli` is the entry of a CLI
+ * on this machine (`packages/cli/src/bin.ts` of a checkout of Vern) to run
+ * instead.
+ */
+export function updateCommand(cli?: string): string[] {
+	return cli ? [cli, "project:update"] : ["x", "@vern/cli@latest", "project:update"];
+}
 
 /**
- * Run the project's own `scripts/update-project.ts`, so the update logic always
- * matches the template the project was created from. Returns its exit code.
+ * Run Vern's update in the project `cwd` is in, with `flags` as given. Returns
+ * its exit code.
  */
-export function updateProject(flags: string[], cwd: string): number {
+export function updateProject(flags: string[], cwd: string, cli?: string): number {
 	const root = requireProjectRoot(cwd);
-	const script = join(root, UPDATE_SCRIPT);
-	if (!existsSync(script)) {
-		throw new UserError(
-			`${script} does not exist. This project cannot be updated with create-vern.`,
-		);
-	}
 	const bun = findBun();
 	if (!bun) {
 		throw new UserError(
 			"Bun is required to run the update. Run `proto install` in the project, or install Bun from https://bun.sh.",
 		);
 	}
-	return stream(bun, [UPDATE_SCRIPT, ...flags], { cwd: root });
+	return stream(bun, [...updateCommand(cli), ...flags], { cwd: root });
 }

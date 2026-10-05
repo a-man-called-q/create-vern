@@ -71,7 +71,7 @@ the other two. Answer `later` to the first question, or pass `--yes` without the
 flags, and the project keeps both ways.
 
 Without a terminal, pass all three: `--prod kubernetes --staging none --local
-kubernetes`. The choice is made by the project's own `scripts/stack-project.ts`
+kubernetes`. The choice is made by the template's own `project:stack` command
 and saved in `.vern/config.json`; change it later, inside the project, with
 `bun run project:stack -- --prod kubernetes` (the files come back from Vern).
 The development stacks in `deploy/dev` are not part of the choice: they are
@@ -87,9 +87,12 @@ npx create-vern update --apply     # review branch: merge, upgrade dependencies,
 npx create-vern update --continue  # resume after resolving conflicts
 ```
 
-This runs the project's own `scripts/update-project.ts`, so the update logic always
-matches the template the project came from. The baseline it merges from is the
-commit create-vern copied, recorded in `.vern/config.json`.
+This runs the update of the newest [`@vern/cli`](https://www.npmjs.com/package/@vern/cli)
+on npm (`bunx @vern/cli@latest project:update`), not the version the project has
+installed: the update that brings a change is the one that knows how to apply
+it. A project from before that package, which has the same code in `scripts/`,
+is moved to it by the same command. The baseline it merges from is the commit
+create-vern copied, recorded in `.vern/config.json`.
 
 ## Customize the login page
 
@@ -134,7 +137,7 @@ src/
   cli/        flags, help text, and the table of commands
   create/     create a project: questions, name rules, template, staging and rename
   login/      add the Login App: checkout, image, auth stack environment
-  update/     run the project's own update script
+  update/     run the update of the newest @vern/cli
   project/    find and read .vern/config.json
   system/     processes, Git, toolchain, terminal; knows nothing about Vern
 ```
@@ -143,8 +146,16 @@ Imports go down that list only: a command may use `project/` and `system/`, and
 `system/` uses nothing above it. `test/` has the same folders.
 
 `CREATE_VERN_TEMPLATE_URL` points the installer at another copy of the template;
-the tests use it with a local fixture. The rename records the upstream that
-`scripts/rename-project.ts` names, so use it for testing only.
+the tests use it with a local fixture. The rename records the upstream that the
+template's CLI names, so use it for testing only. `CREATE_VERN_CLI` makes
+`update` run a CLI on this machine instead of the one on npm: the path of
+`packages/cli/src/bin.ts` in a checkout of Vern.
+
+To create a project, the installer runs the rename and the choice of
+environments from the release it copied (`packages/cli` there, `scripts/` in a
+release from before the CLI), so their logic always matches the template. The
+rename removes `packages/cli` from the project, which installs `@vern/cli` from
+npm, so the installer runs both from a copy in the temporary folder.
 
 Windows is untested.
 
